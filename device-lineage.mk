@@ -18,6 +18,9 @@ PRODUCT_COPY_FILES += \
 PRODUCT_PACKAGES += \
     EuiccSupportPixelOverlay
 
+# PixelParts
+include packages/apps/PixelParts/device.mk
+
 # Kernel
 TARGET_PREBUILT_KERNEL := device/google/pantah-kernel/Image.lz4
 
