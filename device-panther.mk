@@ -14,8 +14,26 @@
 # limitations under the License.
 #
 
-TARGET_KERNEL_DIR ?= device/google/pantah-kernel
-TARGET_BOARD_KERNEL_HEADERS := device/google/pantah-kernel/kernel-headers
+# Restrict the visibility of Android.bp files to improve build analysis time
+$(call inherit-product-if-exists, vendor/google/products/sources_pixel.mk)
+
+ifdef RELEASE_GOOGLE_PANTHER_RADIO_DIR
+RELEASE_GOOGLE_PRODUCT_RADIO_DIR := $(RELEASE_GOOGLE_PANTHER_RADIO_DIR)
+endif
+RELEASE_GOOGLE_BOOTLOADER_PANTHER_DIR ?= pdk# Keep this for pdk TODO: b/327119000
+RELEASE_GOOGLE_PRODUCT_BOOTLOADER_DIR := bootloader/$(RELEASE_GOOGLE_BOOTLOADER_PANTHER_DIR)
+$(call soong_config_set,pantah_bootloader,prebuilt_dir,$(RELEASE_GOOGLE_BOOTLOADER_PANTHER_DIR))
+ifneq ($(filter trunk%, $(RELEASE_GOOGLE_BOOTLOADER_PANTHER_DIR)),)
+$(call soong_config_set,pantah_fingerprint,prebuilt_dir,trunk)
+else
+$(call soong_config_set,pantah_fingerprint,prebuilt_dir,$(RELEASE_GOOGLE_BOOTLOADER_PANTHER_DIR))
+endif
+
+
+TARGET_LINUX_KERNEL_VERSION := $(RELEASE_KERNEL_PANTHER_VERSION)
+# Keeps flexibility for kasan and ufs builds
+TARGET_KERNEL_DIR ?= $(RELEASE_KERNEL_PANTHER_DIR)
+TARGET_BOARD_KERNEL_HEADERS ?= $(RELEASE_KERNEL_PANTHER_DIR)/kernel-headers
 
 $(call inherit-product-if-exists, vendor/google_devices/pantah/prebuilts/device-vendor-panther.mk)
 $(call inherit-product-if-exists, vendor/google_devices/gs201/prebuilts/device-vendor.mk)
@@ -28,7 +46,6 @@ DEVICE_PACKAGE_OVERLAYS += device/google/pantah/panther/overlay
 
 include device/google/pantah/audio/panther/audio-tables.mk
 include device/google/gs201/device-shipping-common.mk
-include hardware/google/pixel/vibrator/cs40l26/device.mk
 include device/google/gs-common/bcmbt/bluetooth.mk
 include device/google/gs-common/touch/focaltech/focaltech.mk
 
@@ -46,9 +63,13 @@ PRODUCT_COPY_FILES += \
 PRODUCT_COPY_FILES += \
         device/google/pantah/conf/init.recovery.device.rc:$(TARGET_COPY_OUT_RECOVERY)/root/init.recovery.panther.rc
 
-# insmod files
+# insmod files. Kernel 5.10 prebuilts don't provide these yet, so provide our
+# own copy if they're not in the prebuilts.
+# TODO(b/369686096): drop this when 5.10 is gone.
+ifeq ($(wildcard $(TARGET_KERNEL_DIR)/init.insmod.*.cfg),)
 PRODUCT_COPY_FILES += \
-	device/google/pantah/init.insmod.panther.cfg:$(TARGET_COPY_OUT_VENDOR)/etc/init.insmod.panther.cfg
+	device/google/pantah/init.insmod.panther.cfg:$(TARGET_COPY_OUT_VENDOR_DLKM)/etc/init.insmod.panther.cfg
+endif
 
 # MIPI Coex Configs
 PRODUCT_COPY_FILES += \
@@ -87,9 +108,16 @@ PRODUCT_COPY_FILES += \
     device/google/pantah/nfc/libnfc-nci-panther.conf:$(TARGET_COPY_OUT_PRODUCT)/etc/libnfc-nci.conf
 
 PRODUCT_PACKAGES += \
-	NfcNci \
+	$(RELEASE_PACKAGE_NFC_STACK) \
 	Tag \
-	android.hardware.nfc-service.st
+	android.hardware.nfc-service.st \
+	NfcOverlayPanther
+
+# Shared Modem Platform
+SHARED_MODEM_PLATFORM_VENDOR := lassen
+
+# Shared Modem Platform
+include device/google/gs-common/modem/modem_svc_sit/shared_modem_platform.mk
 
 # SecureElement
 PRODUCT_PACKAGES += \
@@ -129,11 +157,13 @@ PRODUCT_PROPERTY_OVERRIDES += \
     persist.bluetooth.a2dp_offload.disabled=false \
     persist.bluetooth.a2dp_offload.cap=sbc-aac-aptx-aptxhd-ldac-opus
 
+# Enable Bluetooth AutoOn feature
+PRODUCT_PRODUCT_PROPERTIES += \
+    bluetooth.server.automatic_turn_on=true
+
 # Bluetooth hci_inject test tool
-ifneq (,$(filter eng, $(TARGET_BUILD_VARIANT)))
-PRODUCT_PACKAGES_DEBUG += \
+PRODUCT_PACKAGES_ENG += \
     hci_inject
-endif
 
 # Bluetooth OPUS codec
 PRODUCT_PRODUCT_PROPERTIES += \
@@ -150,11 +180,8 @@ PRODUCT_COPY_FILES += \
     device/google/pantah/bluetooth/bluetooth_power_limits_panther_GVU6C_US.csv:$(TARGET_COPY_OUT_VENDOR)/etc/bluetooth_power_limits_GVU6C_US.csv
 
 # Bluetooth SAR test tool
-ifneq (,$(filter eng, $(TARGET_BUILD_VARIANT)))
-PRODUCT_PACKAGES_DEBUG += \
+PRODUCT_PACKAGES_ENG += \
     sar_test
-endif
-
 # default BDADDR for EVB only
 PRODUCT_PROPERTY_OVERRIDES += \
 	ro.vendor.bluetooth.evb_bdaddr="22:22:22:33:44:55"
@@ -185,11 +212,17 @@ PRODUCT_PRODUCT_PROPERTIES += \
 PRODUCT_COPY_FILES += \
     device/google/pantah/bluetooth/le_audio_codec_capabilities.xml:$(TARGET_COPY_OUT_VENDOR)/etc/le_audio_codec_capabilities.xml
 
+# LE Audio Unicast Allowlist
+PRODUCT_PRODUCT_PROPERTIES += \
+    persist.bluetooth.leaudio.allow_list=SM-R510,WF-1000XM5,SM-R630
+
+# Support LE & Classic concurrent encryption (b/330704060)
+PRODUCT_PRODUCT_PROPERTIES += \
+    bluetooth.ble.allow_enc_with_bredr=true
+
 # Bluetooth EWP test tool
-ifneq (,$(filter eng, $(TARGET_BUILD_VARIANT)))
-PRODUCT_PACKAGES_DEBUG += \
+PRODUCT_PACKAGES_ENG += \
     ewp_tool
-endif
 
 PRODUCT_PRODUCT_PROPERTIES += \
     persist.bluetooth.firmware.selection=BCM.hcd
@@ -252,11 +285,11 @@ PRODUCT_SOONG_NAMESPACES += \
 
 # Fingerprint HAL
 GOODIX_CONFIG_BUILD_VERSION := g7_trusty
-include device/google/gs101/fingerprint/udfps_common.mk
+$(call inherit-product-if-exists, vendor/goodix/udfps/configuration/udfps_common.mk)
 ifeq ($(filter factory%, $(TARGET_PRODUCT)),)
-include device/google/gs101/fingerprint/udfps_shipping.mk
+$(call inherit-product-if-exists, vendor/goodix/udfps/configuration/udfps_shipping.mk)
 else
-include device/google/gs101/fingerprint/udfps_factory.mk
+$(call inherit-product-if-exists, vendor/goodix/udfps/configuration/udfps_factory.mk)
 endif
 
 # Display
@@ -274,15 +307,27 @@ PRODUCT_SOONG_NAMESPACES += vendor/google_devices/pantah/prebuilts
 
 # Location
 ifneq (,$(filter eng, $(TARGET_BUILD_VARIANT)))
+    PRODUCT_COPY_FILES += \
+        device/google/pantah/location/lhd.conf.p10:$(TARGET_COPY_OUT_VENDOR)/etc/gnss/lhd.conf \
+        device/google/pantah/location/scd.conf.p10:$(TARGET_COPY_OUT_VENDOR)/etc/gnss/scd.conf
+    ifneq (,$(filter 6.1, $(TARGET_LINUX_KERNEL_VERSION)))
         PRODUCT_COPY_FILES += \
-                device/google/pantah/location/gps.xml.p10:$(TARGET_COPY_OUT_VENDOR)/etc/gnss/gps.xml \
-                device/google/pantah/location/lhd.conf.p10:$(TARGET_COPY_OUT_VENDOR)/etc/gnss/lhd.conf \
-                device/google/pantah/location/scd.conf.p10:$(TARGET_COPY_OUT_VENDOR)/etc/gnss/scd.conf
+            device/google/pantah/location/gps.6.1.xml.p10:$(TARGET_COPY_OUT_VENDOR)/etc/gnss/gps.xml
+    else
+        PRODUCT_COPY_FILES += \
+            device/google/pantah/location/gps.xml.p10:$(TARGET_COPY_OUT_VENDOR)/etc/gnss/gps.xml
+    endif
 else
+    PRODUCT_COPY_FILES += \
+        device/google/pantah/location/lhd_user.conf.p10:$(TARGET_COPY_OUT_VENDOR)/etc/gnss/lhd.conf \
+        device/google/pantah/location/scd_user.conf.p10:$(TARGET_COPY_OUT_VENDOR)/etc/gnss/scd.conf
+    ifneq (,$(filter 6.1, $(TARGET_LINUX_KERNEL_VERSION)))
         PRODUCT_COPY_FILES += \
-                device/google/pantah/location/gps_user.xml.p10:$(TARGET_COPY_OUT_VENDOR)/etc/gnss/gps.xml \
-                device/google/pantah/location/lhd_user.conf.p10:$(TARGET_COPY_OUT_VENDOR)/etc/gnss/lhd.conf \
-                device/google/pantah/location/scd_user.conf.p10:$(TARGET_COPY_OUT_VENDOR)/etc/gnss/scd.conf
+            device/google/pantah/location/gps_user.6.1.xml.p10:$(TARGET_COPY_OUT_VENDOR)/etc/gnss/gps.xml
+    else
+        PRODUCT_COPY_FILES += \
+            device/google/pantah/location/gps_user.xml.p10:$(TARGET_COPY_OUT_VENDOR)/etc/gnss/gps.xml
+    endif
 endif
 
 # Set support one-handed mode
@@ -294,9 +339,34 @@ PRODUCT_VENDOR_PROPERTIES += \
 	vendor.zram.size=3g
 
 # Increment the SVN for any official public releases
-PRODUCT_VENDOR_PROPERTIES += \
-    ro.vendor.build.svn=43
+ifdef RELEASE_SVN_PANTHER
+TARGET_SVN ?= $(RELEASE_SVN_PANTHER)
+else
+# Set this for older releases that don't use build flag
+TARGET_SVN ?= 61
+endif
 
+PRODUCT_VENDOR_PROPERTIES += \
+    ro.vendor.build.svn=$(TARGET_SVN)
+
+# Set device family property for SMR
+PRODUCT_PROPERTY_OVERRIDES += \
+    ro.build.device_family=P10C10L10
+
+# Set build properties for SMR builds
+ifeq ($(RELEASE_IS_SMR), true)
+    ifneq (,$(RELEASE_BASE_OS_PANTHER))
+        PRODUCT_BASE_OS := $(RELEASE_BASE_OS_PANTHER)
+    endif
+endif
+
+# Set build properties for EMR builds
+ifeq ($(RELEASE_IS_EMR), true)
+    ifneq (,$(RELEASE_BASE_OS_PANTHER))
+        PRODUCT_PROPERTY_OVERRIDES += \
+        ro.build.version.emergency_base_os=$(RELEASE_BASE_OS_PANTHER)
+    endif
+endif
 # DCK properties based on target
 PRODUCT_PROPERTY_OVERRIDES += \
     ro.gms.dck.eligible_wcc=2 \
@@ -330,10 +400,11 @@ PRODUCT_VENDOR_PROPERTIES += \
     persist.vendor.udfps.lhbm_controlled_in_hal_supported=true
 
 # Vibrator HAL
+$(call soong_config_set,haptics,kernel_ver,v$(subst .,_,$(TARGET_LINUX_KERNEL_VERSION)))
 ACTUATOR_MODEL := luxshare_ict_081545
 ADAPTIVE_HAPTICS_FEATURE := adaptive_haptics_v1
 PRODUCT_VENDOR_PROPERTIES += \
-    ro.vendor.vibrator.hal.chirp.enabled=0 \
+    persist.vendor.vibrator.hal.chirp.enabled=0 \
     ro.vendor.vibrator.hal.device.mass=0.195 \
     ro.vendor.vibrator.hal.loc.coeff=2.65 \
     persist.vendor.vibrator.hal.context.enable=false \
@@ -341,6 +412,10 @@ PRODUCT_VENDOR_PROPERTIES += \
     persist.vendor.vibrator.hal.context.fade=true \
     persist.vendor.vibrator.hal.context.cooldowntime=1600 \
     persist.vendor.vibrator.hal.context.settlingtime=5000
+
+# Override Output Distortion Gain
+PRODUCT_VENDOR_PROPERTIES += \
+    vendor.audio.hapticgenerator.distortion.output.gain=0.38
 
 # Keyboard bottom padding in dp for portrait mode and height ratio
 PRODUCT_PRODUCT_PROPERTIES += \
@@ -354,7 +429,6 @@ PRODUCT_VENDOR_PROPERTIES += \
 
 # RKPD
 PRODUCT_PRODUCT_PROPERTIES += \
-    remote_provisioning.enable_rkpd=true \
     remote_provisioning.hostname=remoteprovisioning.googleapis.com \
 
 ##Audio Vendor property
@@ -383,6 +457,14 @@ PRODUCT_PRODUCT_PROPERTIES += \
     ro.quick_start.oem_id=00e0 \
     ro.quick_start.device_id=panther
 
-# HBM
-PRODUCT_PACKAGES += \
-    HbmSVManagerOverlayPanther
+# Bluetooth device id
+# Panther: 0x4109
+PRODUCT_PRODUCT_PROPERTIES += \
+    bluetooth.device_id.product_id=16649
+
+# ETM
+ifneq (,$(RELEASE_ETM_IN_USERDEBUG_ENG))
+ifneq (,$(filter userdebug eng, $(TARGET_BUILD_VARIANT)))
+$(call inherit-product-if-exists, device/google/common/etm/device-userdebug-modules.mk)
+endif
+endif

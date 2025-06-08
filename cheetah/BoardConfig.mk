@@ -18,6 +18,7 @@
 BOARD_BOOTCONFIG += androidboot.load_modules_parallel=true
 
 # The modules which need to be loaded in sequential
+BOARD_KERNEL_CMDLINE += fips140.load_sequential=1
 BOARD_KERNEL_CMDLINE += exynos_drm.load_sequential=1
 
 TARGET_BOARD_INFO_FILE := device/google/pantah/board-info.txt
@@ -29,8 +30,17 @@ BOARD_KERNEL_CMDLINE += swiotlb=noforce
 
 include device/google/gs201/BoardConfig-common.mk
 -include vendor/google_devices/gs201/prebuilts/BoardConfigVendor.mk
+include device/google/gs-common/check_current_prebuilt/check_current_prebuilt.mk
 -include vendor/google_devices/cheetah/proprietary/BoardConfigVendor.mk
 include device/google/pantah/sepolicy/cheetah-sepolicy.mk
 include device/google/pantah/wifi/BoardConfig-wifi.mk
 
-include device/google/pantah/cheetah/BoardConfigLineage.mk
+ifneq (,$(RELEASE_ETM_IN_USERDEBUG_ENG))
+ifneq (,$(filter userdebug eng, $(TARGET_BUILD_VARIANT)))
+-include device/google/common/etm/BoardUserdebugModules.mk
+endif
+endif
+
+DEVICE_PATH := device/google/pantah
+VENDOR_PATH := vendor/google/cheetah
+include $(DEVICE_PATH)/$(TARGET_BOOTLOADER_BOARD_NAME)/BoardConfigLineage.mk

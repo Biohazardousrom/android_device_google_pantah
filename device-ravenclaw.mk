@@ -14,8 +14,22 @@
 # limitations under the License.
 #
 
-TARGET_KERNEL_DIR ?= device/google/pantah-kernel
-TARGET_BOARD_KERNEL_HEADERS := device/google/pantah-kernel/kernel-headers
+# Restrict the visibility of Android.bp files to improve build analysis time
+$(call inherit-product-if-exists, vendor/google/products/sources_pixel.mk)
+
+RELEASE_GOOGLE_BOOTLOADER_CHEETAH_DIR ?= pdk# Keep this for pdk TODO: b/327119000
+RELEASE_GOOGLE_PRODUCT_BOOTLOADER_DIR := bootloader/$(RELEASE_GOOGLE_BOOTLOADER_CHEETAH_DIR)
+$(call soong_config_set,pantah_bootloader,prebuilt_dir,$(RELEASE_GOOGLE_BOOTLOADER_CHEETAH_DIR))
+ifneq ($(filter trunk%, $(RELEASE_GOOGLE_BOOTLOADER_CHEETAH_DIR)),)
+$(call soong_config_set,pantah_fingerprint,prebuilt_dir,trunk)
+else
+$(call soong_config_set,pantah_fingerprint,prebuilt_dir,$(RELEASE_GOOGLE_BOOTLOADER_CHEETAH_DIR))
+endif
+
+
+# Keeps flexibility for kasan and ufs builds
+TARGET_KERNEL_DIR ?= $(RELEASE_KERNEL_CHEETAH_DIR)
+TARGET_BOARD_KERNEL_HEADERS ?= $(RELEASE_KERNEL_CHEETAH_DIR)/kernel-headers
 
 $(call inherit-product-if-exists, vendor/google_devices/pantah/prebuilts/device-vendor-ravenclaw.mk)
 $(call inherit-product-if-exists, vendor/google_devices/gs201/prebuilts/device-vendor.mk)
@@ -24,7 +38,6 @@ $(call inherit-product-if-exists, vendor/google_devices/pantah/proprietary/raven
 
 include device/google/gs201/device-shipping-common.mk
 include device/google/pantah/audio/ravenclaw/audio-tables.mk
-include hardware/google/pixel/vibrator/cs40l26/device.mk
 include device/google/gs-common/bcmbt/bluetooth.mk
 include device/google/gs-common/touch/lsi/lsi.mk
 
@@ -46,9 +59,13 @@ PRODUCT_COPY_FILES += \
 PRODUCT_COPY_FILES += \
         device/google/pantah/conf/init.recovery.device.rc:$(TARGET_COPY_OUT_RECOVERY)/root/init.recovery.ravenclaw.rc
 
-# insmod files
+# insmod files. Kernel 5.10 prebuilts don't provide these yet, so provide our
+# own copy if they're not in the prebuilts.
+# TODO(b/369686096): drop this when 5.10 is gone.
+ifeq ($(wildcard $(TARGET_KERNEL_DIR)/init.insmod.*.cfg),)
 PRODUCT_COPY_FILES += \
-	device/google/pantah/init.insmod.ravenclaw.cfg:$(TARGET_COPY_OUT_VENDOR)/etc/init.insmod.ravenclaw.cfg
+	device/google/pantah/init.insmod.ravenclaw.cfg:$(TARGET_COPY_OUT_VENDOR_DLKM)/etc/init.insmod.ravenclaw.cfg
+endif
 
 # Camera
 PRODUCT_COPY_FILES += \
@@ -66,7 +83,7 @@ PRODUCT_COPY_FILES += \
     device/google/pantah/nfc/libnfc-nci.conf:$(TARGET_COPY_OUT_PRODUCT)/etc/libnfc-nci.conf
 
 PRODUCT_PACKAGES += \
-	NfcNci \
+	$(RELEASE_PACKAGE_NFC_STACK) \
 	Tag \
 	android.hardware.nfc-service.st
 
@@ -142,11 +159,11 @@ PRODUCT_SOONG_NAMESPACES += \
 
 # Fingerprint HAL
 GOODIX_CONFIG_BUILD_VERSION := g6_trusty
-include device/google/gs101/fingerprint/udfps_common.mk
+$(call inherit-product-if-exists, vendor/goodix/udfps/configuration/udfps_common.mk)
 ifeq ($(filter factory%, $(TARGET_PRODUCT)),)
-include device/google/gs101/fingerprint/udfps_shipping.mk
+$(call inherit-product-if-exists, vendor/goodix/udfps/configuration/udfps_shipping.mk)
 else
-include device/google/gs101/fingerprint/udfps_factory.mk
+$(call inherit-product-if-exists, vendor/goodix/udfps/configuration/udfps_factory.mk)
 endif
 
 # WiFi Overlay

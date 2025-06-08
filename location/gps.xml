@@ -18,7 +18,7 @@
        SuplLogFullName="/data/vendor/gps/suplflow.txt"
        tlsEnable="true"
 
-       SuplSslMethod="SSLv23_NO_TLSv1_2"
+       SuplSslMethod="SSLv23"
        SuplEnable="true"
        SuplUseApn="false"
        SuplUseApnNI="true"
@@ -35,7 +35,7 @@
        SuplVersion="2"
        SuplMinorVersion="0"
        SuplOtdoaCapable="true"
-       SuplOtdoaCapable2="false"
+       SuplOtdoaCapable2="true"
        SuplGlonassCapable = "true"
        SuplGalileoCapable = "true"
        SuplBdsCapable = "true"
@@ -49,6 +49,7 @@
        LtoSyncThresholdDays="1"
 
        GnssYearOfHardware="2020"
+       CpEarlyFixGuardTimeSec="1"
        CpGuardTimeSec="1"
        CpLppGuardTimeSec="1"
        IgnoreInjectedSystemTime="true"
@@ -56,11 +57,12 @@
        AttributionAppPkgName="com.google.android.carrierlocation"
 
        AssertEnabled="true"
+       ExitOnComFailure="true"
        CpLppeCancelDbhOnAgnssProvideLoc="true"
        CpLppeUseAgnssLocForEmptyDbh="true"
        CpLppHighAccuracyShapeMode="1"
        ReAidingOnHotStart="false"
-       ReAidingIntervalSec="1200"
+       ReAidingIntervalSec="3600"
        RuntimeSwLteFilterEnable="true"
        PpsDevice="/sys/class/pps/pps0/assert_elapsed"
        SensorsMask="0x244"
@@ -70,7 +72,7 @@
   <gll
        PpsEnable="true"
        LogPriMask="LOG_INFO"
-       LogFacMask="LOG_NMEA | LOG_GLLIOS | LOG_GLLAPI | LOG_MEASAPI"
+       LogFacMask="LOG_NMEA | LOG_GLLIOS | LOG_GLLAPI"
        FrqPlan="FRQ_PLAN_26MHZ_2PPM_49_152MHZ_300PPB"
        MultiCarrRFMode="GL_MULTI_CARR_RF_MODE_L1_L5"
        MultiCarrLnaMask="L1_EXT_ON|L5_EXT_ON"
@@ -93,9 +95,13 @@
        MinGpsWeekNumber="2216"
        OnChipAccMask="50"
        EnableB1C="false"
+
+       RTICacheTimeoutSec="3600"
   />
 
   <gll_features
+       EnableQzsAutoSwitch="false"
+       EnableGloAutoSwitch="false"
        EnableNicAutoSwitch="true"
        EnableNavic="true"
   />
