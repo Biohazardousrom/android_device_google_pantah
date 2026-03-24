@@ -7,6 +7,9 @@
 # Inherit some common stuff
 $(call inherit-product, vendor/aicp/config/common_full_phone.mk)
 
+# Opt in to scudo
+PRODUCT_USE_SCUDO := true
+
 # Inherit device configuration
 DEVICE_CODENAME := cheetah
 DEVICE_PATH := device/google/pantah
