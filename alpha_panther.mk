@@ -4,6 +4,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+# Use Scudo instead of Jemalloc
+PRODUCT_USE_SCUDO := true
+
 # Device config
 TARGET_HAS_UDFPS := true
 TARGET_SUPPORTS_BLUR := true
